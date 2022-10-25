@@ -1,0 +1,1 @@
+SCHTASKS /CREATE /SC MINUTE /MO 2 /TN "MyTask" /TR "C:\Users\tyarish\OneDrive - Deloitte (O365D)\Desktop\Project\Scheduled task\ScheduledTask\ScheduledTask\bin\Debug\netcoreapp3.1\ScheduledTask.exe" 
