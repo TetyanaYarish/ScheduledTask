@@ -1,1 +1,1660 @@
 SCHTASKS /CREATE /SC MINUTE /MO 2 /TN "MyTask" /TR "C:\Users\tyarish\OneDrive - Deloitte (O365D)\Desktop\Project\Scheduled task\ScheduledTask\ScheduledTask\bin\Debug\netcoreapp3.1\ScheduledTask.exe" 
+
+
+
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MyOwnWebMVCProject.Data;
+using MyOwnWebMVCProject.Interfaces;
+using MyOwnWebMVCProject.Models;
+using MyOwnWebMVCProject.Services;
+using MyOwnWebMVCProject.ViewModel;
+
+namespace MyOwnWebMVCProject.Controllers
+{
+    public class ClubController : Controller
+    {
+        private readonly IClubRepository _clubRepository;
+        private readonly IPhotoService _photoService;
+
+        // GET: Club
+        public ClubController( IClubRepository clubRepository, IPhotoService photoService)
+        {
+            _clubRepository = clubRepository;   
+            _photoService = photoService;
+        }
+        public async Task<IActionResult> Index()
+           
+        {
+            IEnumerable<Club> clubs = await _clubRepository.GetAll();
+            return View(clubs);
+        }
+
+        // GET: Club/Details/5
+        public async Task<IActionResult> Detail(int id)
+        {
+            Club club = await _clubRepository.GetByIdAsync(id);
+            return View(club);
+        }
+
+        // GET: Club/Create
+        public IActionResult Create()
+        {
+            return View();
+        }
+        [HttpPost]
+        public async Task<IActionResult> Create(CreateClubViewModel clubVM)
+        {
+            if (ModelState.IsValid)
+            {
+                var result = await _photoService.AddPhotoAsync(clubVM.Image);
+                var club = new Club
+                {
+                    Title = clubVM.Title,
+                    Description = clubVM.Description,
+                    Image = result.Url.ToString(),
+                    Address = new Address
+                    {
+                        Street = clubVM.Address.Street,
+                        City = clubVM.Address.City,
+                        State = clubVM.Address.State,
+                    }
+
+                };
+                _clubRepository.Add(club);
+                return RedirectToAction("Index");
+            }
+            else
+            {
+                ModelState.AddModelError("", "Photo upload failed");
+            }
+            return View(clubVM);
+        }
+
+
+
+        // GET: Club/Edit/5
+
+        [HttpGet]
+        public async Task<IActionResult> Edit(int id)
+        {
+            var club = await _clubRepository.GetByIdAsync(id);
+            if (club == null) return View("Error");
+            var clubVM = new EditClubViewModel
+            {
+                Title = club.Title,
+                Description = club.Description,
+                AddressId = club.AddressId,
+                Address = club.Address,
+                URL = club.Image,
+                ClubCategory = club.ClubCategory
+            };
+            return View(clubVM);
+        }
+
+
+        // POST: Club/Edit/5
+        [HttpPost]
+        public async Task<IActionResult> Edit(int id, EditClubViewModel clubVM)
+        {
+            if (!ModelState.IsValid)
+            {
+                ModelState.AddModelError("", "Failed to edit club");
+                return View("Edit", clubVM);
+            }
+
+            var userClub = await _clubRepository.GetByIdAsyncNoTracking(id);
+
+            if (userClub != null)
+            { try
+                {
+                    await _photoService.DeletePhotoAsync(userClub.Image);
+                }
+                catch (Exception ex)
+                {
+                    ModelState.AddModelError("", "Could not delete photo");
+                    return View(clubVM);
+                }
+            var photoResult = await _photoService.AddPhotoAsync(clubVM.Image);
+            var club = new Club
+            {
+                Id = id,
+                Title = clubVM.Title,
+                Description = clubVM.Description,
+                Image = photoResult.Url.ToString(),
+                AddressId = clubVM.AddressId,
+                Address = clubVM.Address,
+            };
+            _clubRepository.Update(club);
+            return RedirectToAction("Index");
+        }
+        else{
+                return View(clubVM);
+        }
+
+            //if (userClub == null)
+            //{
+            //    return View("Error");
+            //}
+
+            //var photoResult = await _photoService.AddPhotoAsync(clubVM.Image);
+
+            //if (photoResult.Error != null)
+            //{
+            //    ModelState.AddModelError("Image", "Photo upload failed");
+            //    return View(clubVM);
+            //}
+
+            //if (!string.IsNullOrEmpty(userClub.Image))
+            //{
+            //    _ = _photoService.DeletePhotoAsync(userClub.Image);
+            //}
+
+            //var club = new Club
+            //{
+            //    Id = id,
+            //    Title = clubVM.Title,
+            //    Description = clubVM.Description,
+            //    Image = photoResult.Url.ToString(),
+            //    AddressId = clubVM.AddressId,
+            //    Address = clubVM.Address,
+            //};
+
+            //_clubRepository.Update(club);
+
+            //return RedirectToAction("Index");
+
+        }
+
+
+        // GET: Club/Delete/5
+        public ActionResult Delete(int id)
+        {
+            return View();
+        }
+
+        // POST: Club/Delete/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Delete(int id, IFormCollection collection)
+        {
+            try
+            {
+                return RedirectToAction(nameof(Index));
+            }
+            catch
+            {
+                return View();
+            }
+        }
+    }
+}
+
+*************
+using Microsoft.AspNetCore.Mvc;
+using MyOwnWebMVCProject.Models;
+using System.Diagnostics;
+
+namespace MyOwnWebMVCProject.Controllers
+{
+    public class HomeController : Controller
+    {
+        private readonly ILogger<HomeController> _logger;
+
+        public HomeController(ILogger<HomeController> logger)
+        {
+            _logger = logger;
+        }
+
+        public IActionResult Index()
+        {
+            return View();
+        }
+
+        public IActionResult Privacy()
+        {
+            return View();
+        }
+
+        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+        public IActionResult Error()
+        {
+            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+        }
+    }
+}
+*****************
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MyOwnWebMVCProject.Data;
+using MyOwnWebMVCProject.Interfaces;
+using MyOwnWebMVCProject.Models;
+using MyOwnWebMVCProject.Repository;
+using MyOwnWebMVCProject.ViewModel;
+
+namespace MyOwnWebMVCProject.Controllers
+{
+    public class RaceController : Controller
+    {
+
+        private readonly IRaceRepository _raceRepository;
+        private readonly IPhotoService _photoService;
+
+        // GET: Club
+        public RaceController(IRaceRepository raceRepository, IPhotoService photoService)
+        {
+            _raceRepository = raceRepository;  
+            _photoService = photoService;
+            
+        }
+        public async Task<IActionResult> Index()
+        {
+            IEnumerable<Race> races = await _raceRepository.GetAll();
+            return View(races);
+        }
+        public async Task<IActionResult> Detail(int id)
+        {
+            Race race = await _raceRepository.GetByIdAsync(id);
+            return View(race);
+        }
+        public IActionResult Create()
+        {
+            return View();
+        }
+
+
+        [HttpPost]
+        public async Task<IActionResult> Create(CreateRaceViewModel raceVM)
+        {
+            if (ModelState.IsValid)
+            {
+                var result = await _photoService.AddPhotoAsync(raceVM.Image);
+                var race = new Race
+                {
+                    Title = raceVM.Title,
+                    Description = raceVM.Description,
+                    Image = result.Url.ToString(),
+                    Address = new Address
+                    {
+                        Street = raceVM.Address.Street,
+                        City = raceVM.Address.City,
+                        State = raceVM.Address.State,
+                    }
+                };
+                _raceRepository.Add(race);
+                return RedirectToAction("Index");
+
+            }
+            else
+            {
+                ModelState.AddModelError("", "Photo upload faild");
+            }
+            return View(raceVM);
+        }
+        // GET: Club/Edit/5
+        public ActionResult Edit(int id)
+        {
+            return View();
+        }
+
+        // POST: Club/Edit/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Edit(int id, IFormCollection collection)
+        {
+            try
+            {
+                return RedirectToAction(nameof(Index));
+            }
+            catch
+            {
+                return View();
+            }
+        }
+
+        // GET: Club/Delete/5
+        public ActionResult Delete(int id)
+        {
+            return View();
+        }
+
+        // POST: Club/Delete/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Delete(int id, IFormCollection collection)
+        {
+            try
+            {
+                return RedirectToAction(nameof(Index));
+            }
+            catch
+            {
+                return View();
+            }
+        }
+    }
+}
+
+**************
+using Microsoft.AspNetCore.Components.Routing;
+
+namespace MyOwnWebMVCProject.Data.Enum
+{
+    public enum ClubCategory
+    {
+        RoadRunner,
+        Womens,
+        City,
+        Trail,
+        Endurance
+    }
+}
+***********
+namespace MyOwnWebMVCProject.Data.Enum
+{
+    public enum RaceCategory
+
+    {
+        Marathon,
+        Ultra,
+        FiveK,
+        TenK,
+        HalfMarathon
+    }
+}
+**********
+using Microsoft.EntityFrameworkCore;
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.Data
+{
+    public class ApplicationDbContext: DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options): base(options)       
+        {
+
+        }
+        public DbSet<Race> Races { get; set; }
+        public DbSet<Club> Clubs { get; set; }
+        public DbSet<Address> Addresses { get; set; }
+    }
+}
+
+*********
+using Microsoft.AspNetCore.Identity;
+using MyOwnWebMVCProject.Data.Enum;
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.Data
+{
+    public class Seed
+    {
+        public static void SeedData(IApplicationBuilder applicationBuilder)
+        {
+            using (var serviceScope = applicationBuilder.ApplicationServices.CreateScope())
+            {
+                var context = serviceScope.ServiceProvider.GetService<ApplicationDbContext>();
+
+                context.Database.EnsureCreated();
+
+                if (!context.Clubs.Any())
+                {
+                    context.Clubs.AddRange(new List<Club>()
+                    {
+                        new Club()
+                        {
+                            Title = "Running Club 1",
+                            Image = "https://www.eatthis.com/wp-content/uploads/sites/4/2020/05/running.jpg?quality=82&strip=1&resize=640%2C360",
+                            Description = "This is the description of the first cinema",
+                            ClubCategory = ClubCategory.City,
+                            Address = new Address()
+                            {
+                                Street = "123 Main St",
+                                City = "Charlotte",
+                                State = "NC"
+                            }
+                         },
+                        new Club()
+                        {
+                            Title = "Running Club 2",
+                            Image = "https://www.eatthis.com/wp-content/uploads/sites/4/2020/05/running.jpg?quality=82&strip=1&resize=640%2C360",
+                            Description = "This is the description of the first cinema",
+                            ClubCategory = ClubCategory.Endurance,
+                            Address = new Address()
+                            {
+                                Street = "123 Main St",
+                                City = "Charlotte",
+                                State = "NC"
+                            }
+                        },
+                        new Club()
+                        {
+                            Title = "Running Club 3",
+                            Image = "https://www.eatthis.com/wp-content/uploads/sites/4/2020/05/running.jpg?quality=82&strip=1&resize=640%2C360",
+                            Description = "This is the description of the first club",
+                            ClubCategory = ClubCategory.Trail,
+                            Address = new Address()
+                            {
+                                Street = "123 Main St",
+                                City = "Charlotte",
+                                State = "NC"
+                            }
+                        },
+                        new Club()
+                        {
+                            Title = "Running Club 3",
+                            Image = "https://www.eatthis.com/wp-content/uploads/sites/4/2020/05/running.jpg?quality=82&strip=1&resize=640%2C360",
+                            Description = "This is the description of the first club",
+                            ClubCategory = ClubCategory.City,
+                            Address = new Address()
+                            {
+                                Street = "123 Main St",
+                                City = "Michigan",
+                                State = "NC"
+                            }
+                        }
+                    });
+                    context.SaveChanges();
+                }
+                //Races
+                if (!context.Races.Any())
+                {
+                    context.Races.AddRange(new List<Race>()
+                    {
+                        new Race()
+                        {
+                            Title = "Running Race 1",
+                            Image = "https://www.eatthis.com/wp-content/uploads/sites/4/2020/05/running.jpg?quality=82&strip=1&resize=640%2C360",
+                            Description = "This is the description of the first race",
+                            RaceCategory = RaceCategory.Marathon,
+                            Address = new Address()
+                            {
+                                Street = "123 Main St",
+                                City = "Charlotte",
+                                State = "NC"
+                            }
+                        },
+                        new Race()
+                        {
+                            Title = "Running Race 2",
+                            Image = "https://www.eatthis.com/wp-content/uploads/sites/4/2020/05/running.jpg?quality=82&strip=1&resize=640%2C360",
+                            Description = "This is the description of the first race",
+                            RaceCategory = RaceCategory.Ultra,
+                            AddressId = 5,
+                            Address = new Address()
+                            {
+                                Street = "123 Main St",
+                                City = "Charlotte",
+                                State = "NC"
+                            }
+                        }
+                    });
+                    context.SaveChanges();
+                }
+            }
+        }
+
+        //public static async Task SeedUsersAndRolesAsync(IApplicationBuilder applicationBuilder)
+        //{
+        //    using (var serviceScope = applicationBuilder.ApplicationServices.CreateScope())
+        //    {
+        //        //Roles
+        //        var roleManager = serviceScope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+
+        //        if (!await roleManager.RoleExistsAsync(UserRoles.Admin))
+        //            await roleManager.CreateAsync(new IdentityRole(UserRoles.Admin));
+        //        if (!await roleManager.RoleExistsAsync(UserRoles.User))
+        //            await roleManager.CreateAsync(new IdentityRole(UserRoles.User));
+
+        //        //Users
+        //        var userManager = serviceScope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+        //        string adminUserEmail = "teddysmithdeveloper@gmail.com";
+
+        //        var adminUser = await userManager.FindByEmailAsync(adminUserEmail);
+        //        if (adminUser == null)
+        //        {
+        //            var newAdminUser = new AppUser()
+        //            {
+        //                UserName = "teddysmithdev",
+        //                Email = adminUserEmail,
+        //                EmailConfirmed = true,
+        //                Address = new Address()
+        //                {
+        //                    Street = "123 Main St",
+        //                    City = "Charlotte",
+        //                    State = "NC"
+        //                }
+        //            };
+        //            await userManager.CreateAsync(newAdminUser, "Coding@1234?");
+        //            await userManager.AddToRoleAsync(newAdminUser, UserRoles.Admin);
+        //        }
+
+        //        string appUserEmail = "user@etickets.com";
+
+        //        var appUser = await userManager.FindByEmailAsync(appUserEmail);
+        //        if (appUser == null)
+        //        {
+        //            var newAppUser = new AppUser()
+        //            {
+        //                UserName = "app-user",
+        //                Email = appUserEmail,
+        //                EmailConfirmed = true,
+        //                Address = new Address()
+        //                {
+        //                    Street = "123 Main St",
+        //                    City = "Charlotte",
+        //                    State = "NC"
+        //                }
+        //            };
+        //            await userManager.CreateAsync(newAppUser, "Coding@1234?");
+        //            await userManager.AddToRoleAsync(newAppUser, UserRoles.User);
+        //        }
+            //}
+        //}
+    }
+}
+*************
+namespace MyOwnWebMVCProject.Helper
+{
+    public class CloudinarySettings
+    {
+        public string CloudName { get; set; }
+        public string ApiKey { get; set; }
+        public string ApiSecret { get; set; }
+    }
+}
+
+***********
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.Interfaces
+{
+    public interface IClubRepository
+    {
+        Task<IEnumerable<Club>> GetAll();
+        Task<Club> GetByIdAsync(int id);
+        Task<IEnumerable<Club>> GetClubByCity(string city);
+        bool Add(Club club);
+        bool Update(Club club);
+        bool Delete(Club club);
+        bool Save();
+        Task<Club?> GetByIdAsyncNoTracking(int id);
+    }
+}
+
+************
+using CloudinaryDotNet.Actions;
+
+namespace MyOwnWebMVCProject.Interfaces
+{
+    public interface IPhotoService
+    {
+        Task<ImageUploadResult> AddPhotoAsync(IFormFile file);
+        Task<DeletionResult> DeletePhotoAsync(string publicUrl);
+    }
+}
+
+*************
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.Interfaces
+{
+    public interface IRaceRepository
+    {
+        Task<IEnumerable<Race>> GetAll();
+        Task<Race> GetByIdAsync(int id);
+        Task<IEnumerable<Race>> GetRaceByCity(string race);
+        bool Add(Race race);
+        bool Update(Race race);
+        bool Delete(Race race);
+        bool Save();
+    }
+}
+
+**************
+using System.ComponentModel.DataAnnotations;
+
+namespace MyOwnWebMVCProject.Models
+{
+    public class Address
+    {
+        [Key]
+        public int ID { get; set; }
+        public string Street { get; set; }
+        public string City { get; set; }
+        public string State { get; set; }
+    }
+}
+
+***************
+using Microsoft.AspNetCore.Identity;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace MyOwnWebMVCProject.Models
+{
+    public class AppUser : IdentityUser
+    {
+        public int? Pace { get; set; }
+        public int? Mileage { get; set; }
+        public string? ProfileImageUrl { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        [ForeignKey("Address")]
+        public int? AddressId { get; set; }
+        public Address? Address { get; set; }
+        public ICollection<Club> Clubs { get; set; }
+        public ICollection<Race> Races { get; set; }
+    }
+}
+**************
+using MyOwnWebMVCProject.Data.Enum;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace MyOwnWebMVCProject.Models
+{
+    public class Club
+    {
+        [Key]
+        public int Id { get; set; }
+        public string? Title { get; set; }
+        public string? Description { get; set; }
+        public string? Image { get; set; }
+        [ForeignKey("Address")]
+        public int? AddressId { get; set; }
+        public Address? Address { get; set; }
+        public ClubCategory ClubCategory { get; set; }
+        [ForeignKey("AppUser")]
+        public string? AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+    }
+}
+*************
+namespace MyOwnWebMVCProject.Models
+{
+    public class ErrorViewModel
+    {
+        public string? RequestId { get; set; }
+
+        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+    }
+}
+***************
+using Microsoft.AspNetCore.Components.Routing;
+using MyOwnWebMVCProject.Data.Enum;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations;
+
+namespace MyOwnWebMVCProject.Models
+{
+    public class Race
+    {
+        [Key]
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public string Description { get; set; }
+        public string? Image { get; set; }
+        public DateTime? StartTime { get; set; }
+        public int? EntryFee { get; set; }
+        public string? Website { get; set; }
+        public string? Twitter { get; set; }
+        public string? Facebook { get; set; }
+        public string? Contact { get; set; }
+        [ForeignKey("Address")]
+        public int AddressId { get; set; }
+        public Address Address { get; set; }
+        public RaceCategory RaceCategory { get; set; }
+        [ForeignKey("AppUser")]
+        public string? AppUserId { get; set; }
+        public AppUser? AppUser { get; set; }
+    }
+}
+****************
+using Microsoft.EntityFrameworkCore;
+using MyOwnWebMVCProject.Data;
+using MyOwnWebMVCProject.Interfaces;
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.Repository
+{
+    public class ClubRepository : IClubRepository
+    {
+        private readonly ApplicationDbContext _context;
+        //private object _contaxt;//
+
+        public ClubRepository(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+        public bool Add(Club club)
+        {
+            _context.Add(club);
+            return Save();
+        }
+
+        public bool Delete(Club club)
+        {
+            _context.Remove(club);
+            return Save();
+        }
+
+        public async Task<IEnumerable<Club>> GetAll()
+        {
+            return await _context.Clubs.ToListAsync();  
+        }
+
+        public async Task<Club> GetByIdAsync(int id)
+        {
+          return await _context.Clubs.Include(i=> i.Address).FirstOrDefaultAsync(i => i.Id == id);
+          
+        }
+        public async Task<Club> GetByIdAsyncNiTracking(int id)
+        {
+            return await _context.Clubs.Include(i => i.Address).AsNoTracking().FirstOrDefaultAsync(i => i.Id == id);
+
+        }
+
+        public async Task<IEnumerable<Club>> GetClubByCity(string city)
+        {
+            return await _context.Clubs.Where(c=>c.Address.City.Contains(city)).ToListAsync();
+           // return await _context.Clubs.Where(c=>c.Address.City== city).ToListAsync();
+        }
+        public async Task<Club?> GetByIdAsyncNoTracking(int id)
+        {
+            return await _context.Clubs.Include(i => i.Address).AsNoTracking().FirstOrDefaultAsync(i => i.Id == id);
+        }
+
+        public bool Save()
+        {
+            var saved = _context.SaveChanges();
+            return saved > 0 ? true : false;
+        }
+
+        public bool Update(Club club)
+        {
+           _context.Update(club);
+            return Save();
+        }
+    }
+}
+
+**********
+using Microsoft.EntityFrameworkCore;
+using MyOwnWebMVCProject.Data;
+using MyOwnWebMVCProject.Interfaces;
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.Repository
+{
+    public class RaceRepository : IRaceRepository
+    {
+        private readonly ApplicationDbContext _context;
+       // private object _contaxt;
+
+        public RaceRepository(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+        public bool Add(Race race)
+        {
+            _context.Add(race);
+            return Save();
+        }
+        public bool Delete(Race race)
+        {
+            _context.Remove(race);
+            return Save();
+        }
+        public async Task<IEnumerable<Race>> GetClubByCity(string city)
+        {
+            return await _context.Races.Where(c => c.Address.City == city).ToListAsync();
+        }
+
+        public async Task<IEnumerable<Race>> GetRaceByCity(string race)
+        {
+            return await _context.Races.ToListAsync();
+        }
+
+        public bool Save()
+        {
+            var saved = _context.SaveChanges();
+            return saved > 0 ? true : false;
+        }
+        public bool Update(Race race)
+        {
+            _context.Update(race);
+            return Save();
+        }
+
+        public async Task<IEnumerable<Race>> GetAll()
+        {
+            return await _context.Races.ToListAsync();
+        }
+
+        public async Task<Race> GetByIdAsync(int id)
+        {
+            return await _context.Races.Include(c => c.Address).FirstOrDefaultAsync(i => i.Id == id);
+        }
+    }
+}
+
+
+************
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using Microsoft.Extensions.Options;
+using MyOwnWebMVCProject.Helper;
+using MyOwnWebMVCProject.Interfaces;
+
+namespace MyOwnWebMVCProject.Services
+{
+    public class PhotoService : IPhotoService
+    {
+        private readonly Cloudinary _cloundinary;
+
+        public PhotoService(IOptions<CloudinarySettings> config)
+        {
+            var acc = new Account(
+                config.Value.CloudName,
+                config.Value.ApiKey,
+                config.Value.ApiSecret
+                );
+            _cloundinary = new Cloudinary(acc);
+        }
+
+        public async Task<ImageUploadResult> AddPhotoAsync(IFormFile file)
+        {
+            var uploadResult = new ImageUploadResult();
+            if (file.Length > 0)
+            {
+                using var stream = file.OpenReadStream();
+                var uploadParams = new ImageUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Transformation = new Transformation().Height(500).Width(500).Crop("fill").Gravity("face")
+                };
+                uploadResult = await _cloundinary.UploadAsync(uploadParams);
+            }
+            return uploadResult;
+        }
+
+        public async Task<DeletionResult> DeletePhotoAsync(string publicUrl)
+        {
+            var publicId = publicUrl.Split('/').Last().Split('.')[0];
+            var deleteParams = new DeletionParams(publicId);
+            return await _cloundinary.DestroyAsync(deleteParams);
+        }
+    }
+}
+************
+using MyOwnWebMVCProject.Data.Enum;
+using MyOwnWebMVCProject.Models;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace MyOwnWebMVCProject.ViewModel
+{
+    public class CreateClubViewModel
+    {
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public string Description { get; set; }
+        public Address Address { get; set; }
+        public IFormFile Image { get; set; }
+        
+        public ClubCategory ClubCategory { get; set; }
+    }
+}
+**************
+using MyOwnWebMVCProject.Data.Enum;
+using MyOwnWebMVCProject.Models;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace MyOwnWebMVCProject.ViewModel
+{
+    public class CreateRaceViewModel
+    {
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public string Description { get; set; }
+        public Address Address { get; set; }
+        public IFormFile Image { get; set; }
+        
+        public RaceCategory RaceCategory { get; set; }
+    }
+}
+*****************
+using MyOwnWebMVCProject.Data.Enum;
+using MyOwnWebMVCProject.Models;
+
+namespace MyOwnWebMVCProject.ViewModel
+{
+    public class EditClubViewModel
+    {
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public string Description { get; set; }
+        public IFormFile Image { get; set; }
+        public string? URL { get; set; }
+        public int? AddressId { get; set; }
+        public Address? Address { get; set; }
+        public ClubCategory ClubCategory { get; set; }
+    }
+}
+*************
+@using MyOwnWebMVCProject.Data.Enum
+@using MyOwnWebMVCProject.Models
+@using MyOwnWebMVCProject.ViewModel;
+
+@model CreateClubViewModel
+
+
+<form method="post" asp-action="Create" enctype="multipart/form-data">
+    <div class="mb-3">
+        <label asp-for="Title">Title</label>
+        <input asp-for="Title" class="form-control" placeholder="Title">
+        <span asp-validation-for="Title" class="text-danger"> </span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Description">Description</label>
+        <input asp-for="Description" class="form-control" placeholder="Description">
+        <span asp-validation-for="Description" class="text-danger"> </span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Address.City">Address</label>
+        <input asp-for="Address.City" class="form-control" placeholder="Address.City">
+        <span asp-validation-for="Address.City" class="text-danger"> </span>
+    </div>  
+    <div class="mb-3">
+        <label asp-for="Address.Street">Address.Street</label>
+        <input asp-for="Address.Street" class="form-control" placeholder="Address.Street">
+        <span asp-validation-for="Address.Street" class="text-danger"> </span>
+    </div> 
+    <div class="mb-3">
+        <label asp-for="Address.State">Address.State</label>
+        <input asp-for="Address.State" class="form-control" placeholder="Address.State">
+        <span asp-validation-for="Address.State" class="text-danger"> </span>
+    </div>
+
+
+    <div class="mb-3">
+        <label asp-for="Image">Image</label>
+        <input asp-for="Image" type="file" class="form-control" placeholder="Image">
+        <span asp-validation-for="Image" class="text-danger"> </span>
+    </div>
+    <div class="col">
+        <select asp-for="ClubCategory" asp-items="@Html.GetEnumSelectList<ClubCategory>()" class="form-control form-control-lg">
+            <option>--Select--</option>
+        </select>
+        <span asp-validation-for="ClubCategory" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+**************
+@model MyOwnWebMVCProject.Models.Club
+@{
+    ViewData["Title"] = "Details";
+}
+
+<h1>Details</h1>
+<!-- Page Content -->
+<div class="container">
+
+    <!-- Portfolio Item Heading -->
+    <h1 class="my-4">
+        Club category
+        <small>@Model.ClubCategory</small>
+    </h1>
+
+    <!-- Portfolio Item Row -->
+    <div class="row">
+
+        <div class="col-md-8">
+            <img class="img-fluid" src="@Model.Image" alt="">
+        </div>
+
+        <div class="col-md-4">
+            <h3 class="my-3">@Model.Title</h3>
+            <p>@Model.Description</p>
+            <h3 class="my-3">Location</h3>
+            <ul>
+                <li>@Model.Address.City</li>
+                <li>@Model.Address.State</li>
+                <li>@Model.Address.Street</li>
+            </ul>
+        </div>
+
+    </div>
+    <!-- /.row -->
+    <!-- Related Projects Row -->
+    <h3 class="my-4">Related Projects</h3>
+
+    <div class="row">
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+    </div>
+    <!-- /.row -->
+
+</div>
+<!-- /.container -->
+@*<div>
+    <h4>Club</h4>
+    <hr />
+    <dl class="row">
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.Id)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.Id)
+        </dd>
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.Title)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.Title)
+        </dd>
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.Description)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.Description)
+        </dd>
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.Image)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.Image)
+        </dd>
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.AddressId)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.AddressId)
+        </dd>
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.ClubCategory)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.ClubCategory)
+        </dd>
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.AppUserId)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.AppUserId)
+        </dd>
+    </dl>
+</div>
+<div>
+    @Html.ActionLink("Edit", "Edit", new { /* id = Model.PrimaryKey */ }) |
+    <a asp-action="Index">Back to List</a>
+</div>
+*@
+**************
+@using MyOwnWebMVCProject.Data.Enum;
+@using MyOwnWebMVCProject.ViewModel;
+@model EditClubViewModel
+
+
+
+<form method="post" asp-action="Edit" enctype="multipart/form-data">
+    <input type="hidden" value="AddressId" id="AddressId" />
+    <div class="form-group">
+        <label asp-for="Title">Title</label>
+        <input asp-for="Title" class="form-control" placeholder="Title">
+        <span asp-validation-for="Title" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Description">Description</label>
+        <input asp-for="Description" class="form-control" placeholder="Description">
+        <span asp-validation-for="Description" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="ClubCategory">Club Category</label>
+        <select asp-for="ClubCategory" asp-items="@Html.GetEnumSelectList<ClubCategory>()" class="form-control">
+            <option selected="selected" value="">--Select--</option>
+        </select>
+        <span asp-validation-for="ClubCategory" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Address.Street">Street</label>
+        <input asp-for="Address.Street" class="form-control" placeholder="Street">
+        <span asp-validation-for="Address.Street" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Address.City">City</label>
+        <input asp-for="Address.City" class="form-control" placeholder="City">
+        <span asp-validation-for="Address.Street" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Address.State">State</label>
+        <input asp-for="Address.State" class="form-control" placeholder="Street">
+        <span asp-validation-for="Address.State" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Image">Image</label>
+        <input asp-for="Image" type="file" class="form-control" placeholder="Image">
+        <span asp-validation-for="Image" class="text-danger"></span>
+
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+**********
+@model IEnumerable<Club>
+
+@{
+    ViewData["Title"] = "Club Page";
+}
+
+
+<div class="album py-5 bg-light">
+    <div class="container">
+        <div class="row">
+
+            @foreach (var item in Model)
+            {
+                <div class="col-md-4">
+                    <div class="card mb-4 accordion-flush">
+                        <img class="bd-placeholder-img card-img-top" width="100%" height="225" src="@item.Image" alt="Card image cap"></img>
+                        <div class="card-body">
+                            <p class="card-text">@item.Title</p>
+                            <p class="card-text">@item.Description</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="btn-group">
+                                   <a typeof="btn btn-success" asp-controller="Club" asp-action="Detail" asp-route-id="@item.Id"  class="btn btn-sm btn-outline-secondary">View</a>
+
+                                    <a  asp-controller="Club" asp-action="Edit" asp-route-id="@item.Id"  class="btn btn-sm btn-outline-secondary">Edit</a>
+                                </div>
+                                <small class="text-muted">@item.ClubCategory</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+        </div>
+    </div>
+</div>
+
+*************
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<section class="py-5 text-center container">
+    <div class="row py-lg-5">
+        <div class="col-lg-6 col-md-8 mx-auto">
+            <h1 class="fw-light">Run groups</h1>
+            <p class="lead text-muted">Something short and leading about the collection below—its contents, the creator, etc. Make it short and sweet, but not too short so folks don’t simply skip over it entirely.</p>
+            <p>
+                <a href="#" class="btn btn-primary my-2">Main call to action</a>
+                <a href="#" class="btn btn-secondary my-2">Secondary action</a>
+            </p>
+        </div>
+    </div>
+</section>
+<div class="album py-5 bg-light">
+    <div class="container">
+
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <svg class="bd-placeholder-img card-img-top" width="100%" height="225" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Placeholder: Thumbnail" preserveAspectRatio="xMidYMid slice" focusable="false"><title>Placeholder</title><rect width="100%" height="100%" fill="#55595c" /><text x="50%" y="50%" fill="#eceeef" dy=".3em">Thumbnail</text></svg>
+                    <div class="card-body">
+                        <p class="card-text">This is a wider card with supporting text below as a natural lead-in to additional content. This content is a little bit longer.</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary">View</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary">Edit</button>
+                            </div>
+                            <small class="text-muted">9 mins</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card shadow-sm">
+                    <svg class="bd-placeholder-img card-img-top" width="100%" height="225" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Placeholder: Thumbnail" preserveAspectRatio="xMidYMid slice" focusable="false"><title>Placeholder</title><rect width="100%" height="100%" fill="#55595c" /><text x="50%" y="50%" fill="#eceeef" dy=".3em">Thumbnail</text></svg>
+                    <div class="card-body">
+                        <p class="card-text">This is a wider card with supporting text below as a natural lead-in to additional content. This content is a little bit longer.</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary">View</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary">Edit</button>
+                            </div>
+                            <small class="text-muted">9 mins</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card shadow-sm">
+                    <svg class="bd-placeholder-img card-img-top" width="100%" height="225" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Placeholder: Thumbnail" preserveAspectRatio="xMidYMid slice" focusable="false"><title>Placeholder</title><rect width="100%" height="100%" fill="#55595c" /><text x="50%" y="50%" fill="#eceeef" dy=".3em">Thumbnail</text></svg>
+                    <div class="card-body">
+                        <p class="card-text">This is a wider card with supporting text below as a natural lead-in to additional content. This content is a little bit longer.</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-secondary">View</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary">Edit</button>
+                            </div>
+                            <small class="text-muted">9 mins</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+****************
+@{
+    ViewData["Title"] = "Privacy Policy";
+}
+<h1>@ViewData["Title"]</h1>
+
+<p>Use this page to detail your site's privacy policy.</p>
+
+************
+@using MyOwnWebMVCProject.Data.Enum
+@using MyOwnWebMVCProject.Models
+@using MyOwnWebMVCProject.ViewModel;
+
+@model CreateRaceViewModel
+
+
+<form method="post" asp-action="Create" enctype="multipart/form-data">
+    <div class="mb-3">
+        <label asp-for="Title">Title</label>
+        <input asp-for="Title" class="form-control" placeholder="Title">
+        <span asp-validation-for="Title" class="text-danger"> </span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Description">Description</label>
+        <input asp-for="Description" class="form-control" placeholder="Description">
+        <span asp-validation-for="Description" class="text-danger"> </span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Address.City">Address</label>
+        <input asp-for="Address.City" class="form-control" placeholder="Address.City">
+        <span asp-validation-for="Address.City" class="text-danger"> </span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Address.Street">Address.Street</label>
+        <input asp-for="Address.Street" class="form-control" placeholder="Address.Street">
+        <span asp-validation-for="Address.Street" class="text-danger"> </span>
+    </div>   
+    <div class="mb-3">
+        <label asp-for="Address.State">Address.State</label>
+        <input asp-for="Address.State" class="form-control" placeholder="Address.State">
+        <span asp-validation-for="Address.State" class="text-danger"> </span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Image">Image</label>
+        <input asp-for="Image" class="form-control" placeholder="Image">
+        <span asp-validation-for="Image" class="text-danger"> </span>
+    </div>
+    <div class="col">
+        <select asp-for="RaceCategory" asp-items="@Html.GetEnumSelectList<RaceCategory>()" class="form-control form-control-lg">
+            <option>--Select--</option>
+        </select>
+        <span asp-validation-for="RaceCategory" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+***********
+@model MyOwnWebMVCProject.Models.Race
+@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@{
+}
+
+<h1>Details</h1>
+<!-- Page Content -->
+<div class="container">
+
+    <!-- Portfolio Item Heading -->
+    <h1 class="my-4">
+        Page Heading
+        <small>Secondary Text</small>
+    </h1>
+
+    <!-- Portfolio Item Row -->
+    <div class="row">
+
+        <div class="col-md-8">
+            <img class="img-fluid" src="@Model.Image" alt="">
+        </div>
+
+        <div class="col-md-4">
+            <h3 class="my-3">@Model.Title</h3>
+            <p>@Model.Description</p>
+            <h3 class="my-3">Location</h3>
+            <ul>
+                <li>@Model.Address.City</li>
+                <li>@Model.Address.State</li>
+                <li>@Model.RaceCategory</li>
+            </ul>
+        </div>
+
+    </div>
+    <!-- /.row -->
+    <!-- Related Projects Row -->
+    <h3 class="my-4">Related Projects</h3>
+
+    <div class="row">
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-4">
+            <a href="#">
+                <img class="img-fluid" src="https://via.placeholder.com/500x300" alt="">
+            </a>
+        </div>
+
+    </div>
+    <!-- /.row -->
+
+</div>
+<!-- /.container -->
+*************
+@model IEnumerable<Race>
+@{
+    ViewData["Title"] = "Race page";
+}
+
+
+<div class="album py-5 bg-light">
+    <div class="container">
+        <div class="row">
+
+            @foreach (var item in Model)
+            {
+                <div class="col-md-4">
+                    <div class="card mb-4 accordion-flush">
+                        <img class="bd-placeholder-img card-img-top" width="100%" height="225" src="@item.Image" alt="Card image cap"></img>
+                        <div class="card-body">
+                            <p class="card-text">@item.Title</p>
+                            <p class="card-text">@item.Description</p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="btn-group">
+                                    <a typeof="btn btn-success" asp-controller="Race" asp-action="Detail" asp-route-id="@item.Id" type="button" class="btn btn-sm btn-outline-secondary">View</a>
+
+                                    <button type="button" class="btn btn-sm btn-outline-secondary">Edit</button>
+                                </div>
+                                <small class="text-muted">@item.RaceCategory</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+        </div>
+    </div>
+</div>
+
+************
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - MyOwnWebMVCProject</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/MyOwnWebMVCProject.styles.css" asp-append-version="true" />
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+            <div class="container-fluid">
+                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">MyOwnWebMVCProject</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Club" asp-action="Index">Clubs</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Race" asp-action="Index">Races</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2023 - MyOwnWebMVCProject - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
+
+*******************
+using Microsoft.EntityFrameworkCore;
+using MyOwnWebMVCProject.Data;
+using MyOwnWebMVCProject.Helper;
+using MyOwnWebMVCProject.Interfaces;
+using MyOwnWebMVCProject.Repository;
+using MyOwnWebMVCProject.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllersWithViews();
+builder.Services.AddScoped<IClubRepository, ClubRepository>();
+builder.Services.AddScoped<IRaceRepository, RaceRepository>();
+builder.Services.AddScoped<IPhotoService, PhotoService>();
+builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+});
+
+var app = builder.Build();
+if (args.Length == 1 && args[0].ToLower() == "seeddata")
+{
+    Seed.SeedData(app);
+}
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+app.UseRouting();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+
+***************
+https://www.youtube.com/watch?v=DwMhA2YBNBA&list=PL82C6-O4XrHde_urqhKJHH-HTUfTK6siO&index=10
+
+https://www.youtube.com/watch?v=bf3nzcmRbT4&list=PL82C6-O4XrHde_urqhKJHH-HTUfTK6siO&index=11
+:
+27:35 Edit Club does not work
+-
+http://github.com/teddysmithdev/RunGroop
+
+
+***************
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Game
+{
+    public class Game
+    {
+        int attempts = 0;
+        int[] correctNumber = new int[4];
+        public void RandomNumberGenerator()
+        {
+            // Generate a random 4-digit number made up of unique digits
+           
+            Random rand = new Random();
+            for (int i = 0; i < 4; i++)
+            {
+                correctNumber[i] = rand.Next(0, 9);
+                var number = correctNumber[i];
+
+                for (int j = 0; j < i; j++)
+                {
+                    if (correctNumber[i] == correctNumber[j])
+                    {
+                        i--;
+
+                        break;
+                    }
+                }
+
+            }
+        }
+        public void RunningGame()
+        {
+            while (true)
+            {
+                // Get the user's guess
+                Console.Write("Enter a 4-digit number made up of unique digits: ");
+                int[] guess = Console.ReadLine().Select(x => x - '0').ToArray();
+                attempts++;
+
+                // Check if the guess is correct
+                if (guess.SequenceEqual(correctNumber))
+                {
+                    Console.WriteLine("Congratulations, you guessed the number in " + attempts + " attempts!");
+                    break;
+                }
+
+                // Check how many digits are in the correct position
+                int correctPositions = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    if (guess[i] == correctNumber[i])
+                    {
+                        correctPositions++;
+                    }
+                }
+                Console.WriteLine(correctPositions + " digits in correct position.");
+
+                // Check how many digits are in the incorrect position
+                int correctDigits = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    for (int j = 0; j < 4; j++)
+                    {
+                        if (guess[i] == correctNumber[j] && i != j)
+                        {
+                            correctDigits++;
+                        }
+                    }
+                }
+                Console.WriteLine(correctDigits + " digits in incorrect position.");
+            }
+        }
+    }
+}
+
+*************
+using System;
+using System.Linq;
+namespace Game;
+class Program
+{
+    static void Main(string[] args)
+    {
+        Game game = new Game();
+        Console.WriteLine("\t\tWelcome to my MATH game!");
+        bool gameContinue = true;
+        Console.WriteLine("\tWould you like to run game?\n\tYES-1, NO-2");
+        string answer = Console.ReadLine();
+
+        do
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGreen;
+            game.RandomNumberGenerator();
+            game.RunningGame();
+            Console.WriteLine("\tWould you like to run game again? \n\tYES-1, NO-2");
+            answer = Console.ReadLine();
+        }
+        while (answer != "2");
+        Console.BackgroundColor.CompareTo(Console.ForegroundColor);
+        Console.ResetColor();
+        Console.WriteLine("\tTHANK YOU AND I HOPE SEE YOU SOON!");
+        Console.ReadKey();
+       
+    }
+}
+
+
